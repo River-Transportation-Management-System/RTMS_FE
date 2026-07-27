@@ -141,3 +141,15 @@ docker compose up --build frontend
 ```
 
 Production image dùng Next.js standalone, cổng `3000`.
+
+## API client (Axios)
+
+FE đã setup Axios tại `src/lib/api/client.ts` gồm:
+
+- `api` instance với `baseURL` từ `NEXT_PUBLIC_API_URL`
+- timeout mặc định
+- interceptor chuẩn hóa lỗi về `ApiError`
+- helper: `apiGet`, `apiPost`, `apiPatch`, `apiDelete`
+
+Khi viết feature mới, không gọi `fetch` trực tiếp trong component; tạo hàm API
+trong `src/features/<feature>/api` và tái sử dụng helper Axios này.
