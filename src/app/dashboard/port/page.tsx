@@ -29,8 +29,8 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   IN_PROGRESS:                { label: "Đang Vận Chuyển",       cls: "bg-emerald-100 text-emerald-800 border border-emerald-300" },
   COMPLETED:                  { label: "Hoàn Thành",            cls: "bg-teal-100 text-teal-800 border border-teal-300" },
   REJECTED_BY_PORT:           { label: "Cảng Từ Chối",          cls: "bg-red-100 text-red-800 border border-red-300" },
-  EXPIRED:                    { label: "Hết Hạn",               cls: "bg-gray-100 text-gray-600 border border-gray-300" },
-  CANCELLED:                  { label: "Đã Hủy",                cls: "bg-gray-100 text-gray-500 border border-gray-300" },
+  EXPIRED:                    { label: "Hết Hạn",               cls: "bg-gray-200 text-gray-700 border border-gray-400" },
+  CANCELLED:                  { label: "Đã Hủy",                cls: "bg-rose-100 text-rose-700 border border-rose-300" },
   FAILED:                     { label: "Thất Bại",              cls: "bg-red-100 text-red-900 border border-red-300" },
 };
 
@@ -50,7 +50,7 @@ export default function PortManagerDashboard() {
   const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
   const [selectedPortId, setSelectedPortId] = useState<number | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
-  const [pendingTabFilter, setPendingTabFilter] = useState<"NEED_MY_REVIEW" | "MY_REVIEWED" | "ALL_MY_PORT" | "ALL_SYSTEM">("NEED_MY_REVIEW");
+  const [pendingTabFilter, setPendingTabFilter] = useState<"NEED_MY_REVIEW" | "MY_REVIEWED" | "ALL_MY_PORT" | "CLOSED">("NEED_MY_REVIEW");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -61,7 +61,7 @@ export default function PortManagerDashboard() {
       }
 
       const [bRes, pRes]: any[] = await Promise.all([
-        listBookings({ page: 1, limit: 50 }),
+        listBookings({ page: 1, limit: 100 }),
         listPorts(),
       ]);
 
@@ -71,7 +71,7 @@ export default function PortManagerDashboard() {
       setBookings(bItems);
       setPorts(pItems);
 
-      // Tự động tìm cảng gắn với user_id này
+      // Tự động tìm cảng gắn chặt với user_id của chủ cảng đang đăng nhập
       let activePortId = selectedPortId;
       if (pItems.length > 0) {
         const userPort = pItems.find(p => p.user_id === user?.userId);
@@ -84,7 +84,7 @@ export default function PortManagerDashboard() {
         }
       }
 
-      // Nạp danh sách review của cảng cho tất cả các đơn hàng liên quan đến cảng được chọn
+      // Chỉ nạp review của các đơn hàng có tuyến đi/đến liên quan đến cảng của chủ cảng này
       const relevantBookings = bItems.filter((b: any) => {
         if (!activePortId) return true;
         const r = getRouteDetail(b.route_id);
@@ -123,8 +123,27 @@ export default function PortManagerDashboard() {
     fetchData();
   }, [fetchData]);
 
+  // Kiểm tra đơn hàng có bị hủy hoặc quá hạn hay không
+  const isBookingCancelledOrExpired = (b: any) => {
+    if (b.booking_status === "CANCELLED" || b.booking_status === "EXPIRED" || b.booking_status === "FAILED") {
+      return true;
+    }
+    if (b.expired_date && new Date(b.expired_date).getTime() < Date.now()) {
+      return true;
+    }
+    return false;
+  };
+
   const handlePortReview = async (bookingId: number, decision: "APPROVED" | "REJECTED") => {
     if (!selectedPortId) return;
+
+    // Ngăn chặn duyệt đơn đã hủy hoặc hết hạn
+    const targetBooking = bookings.find(b => b.booking_id === bookingId);
+    if (targetBooking && isBookingCancelledOrExpired(targetBooking)) {
+      alert("Đơn hàng này đã bị hủy hoặc quá hạn, Cảng không thể kiểm duyệt!");
+      return;
+    }
+
     setProcessingId(bookingId);
     const note = reviewNotes[bookingId] || "";
 
@@ -238,23 +257,29 @@ export default function PortManagerDashboard() {
   };
 
   const getPortName = (id: number) => ports.find(p => p.port_id === id)?.port_name || `Cảng #${id}`;
+  const userPort = ports.find(p => p.user_id === user?.userId);
 
-  // 1. Phân loại đơn theo đúng Cảng phụ trách (Tuyến đi/đến có cảng này)
+  // 1. Chỉ lọc và quản lý các đơn hàng có tuyến đi/đến tại Cảng của chủ cảng hiện tại
   const myPortAllBookings = bookings.filter(b => {
     if (!selectedPortId) return true;
     const route = getRouteDetail(b.route_id);
     return route.departurePortId === selectedPortId || route.destinationPortId === selectedPortId;
   });
 
-  // A. Đơn cần Cảng của bạn duyệt (Status = PENDING_PORT_REVIEW và cảng mình chưa duyệt)
+  // A. Đơn cần Cảng của bạn duyệt:
+  // - Trạng thái: PENDING_PORT_REVIEW
+  // - Tuyến đi qua cảng này
+  // - CÒN HẠN & CHƯA HỦY
+  // - Cảng này CHƯA gửi đánh giá
   const needMyReviewBookings = myPortAllBookings.filter(b => {
     if (b.booking_status !== "PENDING_PORT_REVIEW") return false;
+    if (isBookingCancelledOrExpired(b)) return false;
     const bReviews = reviewsMap[b.booking_id] || [];
     const myRev = bReviews.find((r: any) => r.port_id === selectedPortId);
     return !myRev;
   });
 
-  // B. Đơn Cảng của bạn ĐÃ DUYỆT (Bao gồm các đơn đang PENDING mà mình đã duyệt, hoặc các đơn đã qua giai đoạn 2 cảng duyệt xong)
+  // B. Đơn Cảng của bạn ĐÃ DUYỆT ĐẠT (hoặc các đơn đã qua khâu duyệt cảng)
   const approvedBookings = myPortAllBookings.filter(b => {
     const bReviews = reviewsMap[b.booking_id] || [];
     const myRev = bReviews.find((r: any) => r.port_id === selectedPortId);
@@ -263,26 +288,23 @@ export default function PortManagerDashboard() {
     return hasApprovedRecord || isPastReviewStage;
   });
 
-  // C. Toàn bộ đơn qua cảng này
-  const allMyPortBookings = myPortAllBookings;
-
-  // D. Toàn hệ thống
-  const allSystemBookings = bookings;
+  // C. Đơn Hết hạn hoặc Đã hủy
+  const closedBookings = myPortAllBookings.filter(b => isBookingCancelledOrExpired(b));
 
   const getDisplayedBookings = () => {
     switch (pendingTabFilter) {
       case "NEED_MY_REVIEW": return needMyReviewBookings;
       case "MY_REVIEWED":    return approvedBookings;
-      case "ALL_MY_PORT":    return allMyPortBookings;
-      case "ALL_SYSTEM":     return allSystemBookings;
+      case "ALL_MY_PORT":    return myPortAllBookings;
+      case "CLOSED":         return closedBookings;
       default:               return needMyReviewBookings;
     }
   };
 
   const displayedBookings = getDisplayedBookings();
 
-  // 2. Các danh mục khác lọc theo cảng phụ trách
-  const finalConfirmBookings = myPortAllBookings.filter(b => b.booking_status === "WAITING_FINAL_CONFIRMATION");
+  // 2. Các danh mục khác cũng chỉ hiển thị đơn thuộc cảng của chủ cảng hiện tại
+  const finalConfirmBookings = myPortAllBookings.filter(b => b.booking_status === "WAITING_FINAL_CONFIRMATION" && !isBookingCancelledOrExpired(b));
   const inProgressBookings   = myPortAllBookings.filter(b => ["CONFIRMED", "IN_PROGRESS"].includes(b.booking_status));
   const completedBookings    = myPortAllBookings.filter(b => b.booking_status === "COMPLETED");
 
@@ -295,7 +317,7 @@ export default function PortManagerDashboard() {
           <Sidebar role="PORT_MANAGER" />
           <main className="flex-1 p-8 space-y-6 max-w-7xl mx-auto">
 
-            {/* Banner */}
+            {/* Banner: Khóa chặt vào Cảng của chủ cảng đang đăng nhập */}
             <div id="overview" className="rtms-card p-6 bg-gradient-to-r from-[#0F4C5C] to-[#142834] text-white flex items-center justify-between shadow-lg scroll-mt-20">
               <div>
                 <span className="px-3 py-1 bg-cyan-powder/20 text-cyan-powder border border-cyan-powder/30 rounded-full text-xs font-bold">
@@ -305,27 +327,38 @@ export default function PortManagerDashboard() {
                   Kiểm Duyệt Cảng & Quản Lý Tiến Trình Vận Chuyển ⚓
                 </h2>
                 <p className="text-xs text-gray-300 mt-1 max-w-2xl">
-                  Chỉ tiếp nhận và kiểm duyệt các đơn đặt chuyến có tuyến vận tải đi hoặc đến tại cảng bạn đang phụ trách.
+                  Chỉ tiếp nhận và kiểm duyệt các đơn đặt chuyến có tuyến vận tải đi hoặc đến tại cảng bạn đang phụ trách. Không áp dụng cho đơn đã hủy hoặc quá hạn.
                 </p>
               </div>
-              <div className="bg-white/10 p-3.5 rounded-2xl border border-white/20 text-right">
-                <label className="block text-[11px] text-gray-300 font-bold mb-1">Cảng đang phụ trách:</label>
-                {ports.length > 0 ? (
-                  <select
-                    value={selectedPortId ?? ""}
-                    onChange={e => setSelectedPortId(Number(e.target.value))}
-                    className="bg-slate-navy text-white text-xs font-bold p-2.5 rounded-xl border border-aqua-soft focus:outline-none"
-                  >
-                    {ports.map(p => (
-                      <option key={p.port_id} value={p.port_id}>⚓ {p.port_name} (#{p.port_id})</option>
-                    ))}
-                  </select>
+
+              {/* Thông tin Cảng của Chủ Cảng đang đăng nhập */}
+              <div className="bg-white/10 p-3.5 rounded-2xl border border-white/20 text-right min-w-[260px]">
+                <span className="block text-[11px] text-gray-300 font-bold mb-1">Cảng của bạn:</span>
+                {userPort ? (
+                  <div className="inline-flex items-center gap-2 bg-slate-navy text-cyan-powder px-3.5 py-2 rounded-xl border border-aqua-soft font-extrabold text-xs">
+                    <span>⚓</span>
+                    <span>{userPort.port_name}</span>
+                    <span className="text-gray-300 font-normal">#{userPort.port_id}</span>
+                  </div>
+                ) : ports.length > 0 ? (
+                  <div className="space-y-1">
+                    <select
+                      value={selectedPortId ?? ""}
+                      onChange={e => setSelectedPortId(Number(e.target.value))}
+                      className="bg-slate-navy text-white text-xs font-bold p-2.5 rounded-xl border border-aqua-soft focus:outline-none"
+                    >
+                      {ports.map(p => (
+                        <option key={p.port_id} value={p.port_id}>⚓ {p.port_name} (#{p.port_id})</option>
+                      ))}
+                    </select>
+                    <span className="block text-[10px] text-amber-300 font-medium">(Chế độ xem Quản trị)</span>
+                  </div>
                 ) : (
-                  <span className="text-xs text-gray-400">Đang tải danh sách cảng...</span>
+                  <span className="text-xs text-gray-400">Đang tải cảng...</span>
                 )}
                 {selectedPortId && (
                   <p className="text-[10px] text-gray-300 mt-1">
-                    Đang duyệt với: <strong className="text-cyan-powder font-bold">{getPortName(selectedPortId)}</strong>
+                    Chỉ quản lý đơn cập bến / xuất bến tại cảng này
                   </p>
                 )}
               </div>
@@ -370,17 +403,17 @@ export default function PortManagerDashboard() {
                     <span>Kiểm Duyệt Điều Kiện Bốc Xếp — {selectedPortId ? getPortName(selectedPortId) : "Cảng"}</span>
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Quản lý danh sách các đơn chờ phê duyệt và theo dõi các đơn mà Cảng bạn đã hoàn tất kiểm duyệt.
+                    Chỉ hiển thị các đơn vận chuyển đi/đến tại cảng của bạn. Các đơn đã bị hủy hoặc quá hạn sẽ bị khóa duyệt.
                   </p>
                 </div>
 
-                {/* Filter Tabs */}
+                {/* Filter Tabs - ĐÃ BỎ "TOÀN HỆ THỐNG", CHỈ GIỮ ĐƠN LIÊN QUAN ĐẾN CẢNG NÀY */}
                 <div className="flex gap-1.5 flex-wrap items-center">
                   {[
                     { key: "NEED_MY_REVIEW", label: `⏳ Cần Cảng Bạn Duyệt (${needMyReviewBookings.length})` },
                     { key: "MY_REVIEWED",    label: `✅ Đã Duyệt (${approvedBookings.length})` },
-                    { key: "ALL_MY_PORT",    label: `📋 Tất Cả Đơn Qua Cảng (${allMyPortBookings.length})` },
-                    { key: "ALL_SYSTEM",     label: `🌐 Toàn Hệ Thống (${allSystemBookings.length})` },
+                    { key: "ALL_MY_PORT",    label: `📋 Tất Cả Đơn Qua Cảng (${myPortAllBookings.length})` },
+                    { key: "CLOSED",         label: `🚫 Đã Hủy / Quá Hạn (${closedBookings.length})` },
                   ].map(tab => (
                     <button
                       key={tab.key}
@@ -402,7 +435,7 @@ export default function PortManagerDashboard() {
               </div>
 
               <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800">
-                <strong>📌 Quy tắc kiểm duyệt 2 cảng:</strong> Mỗi đơn hàng cần cả <strong>Cảng Đi</strong> và <strong>Cảng Đến</strong> đều phê duyệt đạt. Khi cả 2 Cảng duyệt xong, đơn sẽ tự động chuyển sang bước tìm và gom tàu phù hợp.
+                <strong>📌 Quy tắc kiểm duyệt:</strong> Mỗi đơn hàng cần cả <strong>Cảng Đi</strong> và <strong>Cảng Đến</strong> đều phê duyệt đạt. Nếu đơn hàng quá hạn hoặc khách đã hủy, hệ thống sẽ tự động đóng duyệt để tránh thao tác nhầm.
               </div>
 
               {loading ? (
@@ -413,6 +446,8 @@ export default function PortManagerDashboard() {
                     ? `Hiện không có đơn hàng nào cần ${selectedPortId ? getPortName(selectedPortId) : "Cảng của bạn"} duyệt.`
                     : pendingTabFilter === "MY_REVIEWED"
                     ? `Chưa có đơn hàng nào đã được ${selectedPortId ? getPortName(selectedPortId) : "Cảng của bạn"} phê duyệt.`
+                    : pendingTabFilter === "CLOSED"
+                    ? "Không có đơn hàng nào bị hủy hoặc quá hạn tại cảng này."
                     : "Không có đơn hàng nào ở mục này."}
                 </div>
               ) : (
@@ -422,6 +457,11 @@ export default function PortManagerDashboard() {
                     const bookingReviews = reviewsMap[b.booking_id] || [];
                     const myReview = bookingReviews.find((r: any) => r.port_id === selectedPortId);
                     const otherReviews = bookingReviews.filter((r: any) => r.port_id !== selectedPortId);
+                    
+                    const isCancelled = b.booking_status === "CANCELLED";
+                    const isExpired = b.booking_status === "EXPIRED" || (b.expired_date && new Date(b.expired_date).getTime() < Date.now());
+                    const isClosed = isCancelled || isExpired;
+
                     const isApprovedByMe = myReview?.review_status === "APPROVED" || ["WAITING_VESSEL_RESPONSE", "VESSEL_CANDIDATES_READY", "WAITING_CUSTOMER_SELECTION", "WAITING_FINAL_CONFIRMATION", "CONFIRMED", "IN_PROGRESS", "COMPLETED"].includes(b.booking_status);
                     const isRejectedByMe = myReview?.review_status === "REJECTED";
                     const isBothApproved = ["WAITING_VESSEL_RESPONSE", "VESSEL_CANDIDATES_READY", "WAITING_CUSTOMER_SELECTION", "WAITING_FINAL_CONFIRMATION", "CONFIRMED", "IN_PROGRESS", "COMPLETED"].includes(b.booking_status);
@@ -433,7 +473,9 @@ export default function PortManagerDashboard() {
                       <div
                         key={b.booking_id}
                         className={`p-5 rounded-2xl border-2 shadow-sm transition-all ${
-                          isBothApproved
+                          isClosed
+                            ? "border-gray-300 bg-gray-50 opacity-80"
+                            : isBothApproved
                             ? "border-emerald-400 bg-emerald-50/50"
                             : isApprovedByMe
                             ? "border-emerald-300 bg-emerald-50/30"
@@ -459,19 +501,16 @@ export default function PortManagerDashboard() {
                                   🏁 Cảng Dỡ Hàng (Cảng Đến)
                                 </span>
                               )}
-                              {!isDeparturePort && !isDestinationPort && (
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gray-100 text-gray-600 border border-gray-300">
-                                  🌐 Tuyến Liên Cảng Khác
+
+                              {!isClosed && (
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                  approvedCount >= 2
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-black"
+                                    : "bg-cyan-powder text-deep-teal border-aqua-soft"
+                                }`}>
+                                  {approvedCount}/2 Cảng Đã Duyệt
                                 </span>
                               )}
-
-                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
-                                approvedCount >= 2
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-black"
-                                  : "bg-cyan-powder text-deep-teal border-aqua-soft"
-                              }`}>
-                                {approvedCount}/2 Cảng Đã Duyệt
-                              </span>
                             </div>
 
                             {/* Departure -> Destination badge */}
@@ -488,11 +527,12 @@ export default function PortManagerDashboard() {
                             </p>
                             <p className="text-[11px] text-gray-400">
                               Ngày nhận: {new Date(b.receive_date).toLocaleDateString("vi-VN")}
+                              {b.expired_date && ` | Hạn đơn: ${new Date(b.expired_date).toLocaleDateString("vi-VN")}`}
                               {b.notes ? ` | Ghi chú khách: ${b.notes}` : ""}
                             </p>
 
                             {/* Review Status of other ports */}
-                            {otherReviews.length > 0 && !isBothApproved && (
+                            {otherReviews.length > 0 && !isBothApproved && !isClosed && (
                               <div className="p-2 rounded-xl bg-cyan-powder/30 border border-aqua-soft text-[11px] text-slate-navy">
                                 ⚓ Cảng đối tác: {otherReviews.map((or: any) => (
                                   <span key={or.port_id} className="font-bold text-deep-teal mr-2">
@@ -504,7 +544,27 @@ export default function PortManagerDashboard() {
                           </div>
 
                           {/* Action / Status Panel for current Port */}
-                          {isBothApproved ? (
+                          {isCancelled ? (
+                            <div className="p-3.5 rounded-2xl bg-gray-100 border border-gray-300 text-center min-w-[240px]">
+                              <span className="font-bold text-xs text-gray-700 flex items-center justify-center gap-1.5">
+                                <span>🚫</span>
+                                <span>ĐƠN HÀNG ĐÃ BỊ HỦY</span>
+                              </span>
+                              <span className="text-[11px] text-gray-500 mt-1 block">
+                                Khách hàng hoặc hệ thống đã hủy đơn. Không thể kiểm duyệt.
+                              </span>
+                            </div>
+                          ) : isExpired ? (
+                            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-center min-w-[240px]">
+                              <span className="font-bold text-xs text-amber-800 flex items-center justify-center gap-1.5">
+                                <span>⏰</span>
+                                <span>ĐƠN HÀNG ĐÃ QUÁ HẠN</span>
+                              </span>
+                              <span className="text-[11px] text-amber-700 mt-1 block">
+                                Đã hết hạn tiếp nhận ({new Date(b.expired_date).toLocaleDateString("vi-VN")}). Hệ thống đã đóng duyệt.
+                              </span>
+                            </div>
+                          ) : isBothApproved ? (
                             <div className="p-4 rounded-2xl bg-emerald-100/80 border border-emerald-300 text-center min-w-[260px] space-y-1.5">
                               <div className="flex items-center justify-center gap-1.5 text-xs font-extrabold text-emerald-900">
                                 <span>🎉</span>
