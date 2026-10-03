@@ -26,7 +26,6 @@ RTMS_FE/
 │   ├── app/                   # App Router Pages & Layouts
 │   │   ├── page.tsx           # Landing Portal cho 4 phân hệ
 │   │   ├── login/page.tsx     # Trang Đăng nhập & Chọn tài khoản Demo 1-click
-│   │   ├── (dashboard)/       # Redirects đường dẫn cũ (/cargo-owner, /port, /vessel-owner)
 │   │   └── dashboard/         # 4 Giao diện Phân hệ Cô lập
 │   │       ├── customer/      # Giao diện Khách hàng (User #2)
 │   │       ├── port/          # Giao diện Ban Quản lý Cảng (User #11)
@@ -42,6 +41,7 @@ RTMS_FE/
 │       ├── realtime.ts        # Realtime Event Emitter Hub
 │       └── services/          # Service layer kết nối REST APIs (auth, booking, port, user, vessel, workflow)
 ├── REPORT.md                  # Báo cáo thiết kế Giao diện Frontend (Maritime Cyan Palette)
+└── README.md                  # Hướng dẫn chi tiết cho Frontend Application
 ```
 
 ---
@@ -83,9 +83,10 @@ Truy cập trang đăng nhập tại `/login` và chọn 1-click vào tài kho�
 
 ## 🚀 6. HƯỚNG DẪN KHỞI CHẠY (GETTING STARTED)
 
-### 1. Khởi chạy với Docker
+### 1. Khởi chạy với Docker Compose (Khuyên dùng)
 ```bash
-docker compose up --build -d frontend
+# Từ thư mục gốc dự án River_Management:
+docker compose up --build -d rtms_frontend
 # Giao diện Web chạy tại: http://localhost:3000
 ```
 
