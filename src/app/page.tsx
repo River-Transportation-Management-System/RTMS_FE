@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { NotificationToastContainer } from "@/components/common/NotificationToast";
 import { useAuth } from "@/lib/auth-context";
+import { realtimeHub } from "@/lib/realtime";
 
 export default function Home() {
   const { user, isAuthenticated } = useAuth();
@@ -56,7 +57,11 @@ export default function Home() {
     }
 
     if (user.roleCode !== code && user.roleCode !== "ADMIN") {
-      alert(`Tài khoản của bạn thuộc vai trò [${user.roleName}]. Vui lòng truy cập đúng phân hệ được cấp phép.`);
+      realtimeHub.notify({
+        title: "Quyền truy cập bị giới hạn",
+        message: `Tài khoản của bạn thuộc phân hệ [${user.roleName}]. Vui lòng chọn đúng giao diện được cấp phép.`,
+        type: "warning",
+      });
       return;
     }
 

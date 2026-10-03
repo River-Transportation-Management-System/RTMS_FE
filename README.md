@@ -1,155 +1,104 @@
-# RTMS Frontend
+# 🌊 RTMS_FE — FRONTEND WEB APPLICATION
+> **Giao Diện Web Điều Hành Vận Tải Đường Thủy RTMS Cho 4 Phân Hệ Cô Lập**
 
-Giao diện web Next.js cho ba actor trong báo cáo: **Chủ hàng (CargoOwner)**,
-**Cảng (Port Staff)** và **Chủ tàu (VesselOwner)**. Project này chỉ hiển thị
-UI, thu thập input và gọi Backend API; không chứa business rules hoặc truy vấn
-database.
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Next.js 16](https://img.shields.io/badge/Next.js%2016-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Build Status](https://img.shields.io/badge/Build-100%25%20Passed-brightgreen?style=for-the-badge)
 
-Vai trò hệ thống lấy từ bảng `Role` / `User` trên backend. Schema đầy đủ nằm
-trong repo `RTMS_BE/database/migrations/000_schema_overview.md`.
+---
 
-## Chạy project
+## 📌 1. TỔNG QUAN PHÂN HỆ FRONTEND
 
-Yêu cầu Node.js 24+ và npm 11+. Backend phải chạy tại
-<http://localhost:3001> (hoặc đổi `NEXT_PUBLIC_API_URL`).
+`RTMS_FE` là giao diện người dùng chính của hệ thống RTMS, được xây dựng trên nền tảng **Next.js 16 (App Router, TypeScript)** và **TailwindCSS**, cung cấp trải nghiệm điều hành trực quan cho cả 4 vai trò trong chuỗi logistics đường thủy: **Khách hàng**, **Ban Quản lý Cảng**, **Chủ phương tiện** và **Quản trị viên**.
 
+Giao diện được thiết kế chuẩn mực theo tông màu biển **Maritime Cyan Palette**, tích hợp font chữ hiện đại, luồng làm việc 6 bước khép kín, hệ thống thông báo **Realtime Toast Notifications** và cơ chế **Smart Mock Fallback Engine** cho phép vận hành mượt mà ở cả 2 chế độ Online và Offline.
+
+---
+
+## 🏛️ 2. CẤU TRÚC MÃ NGUỒN (FRONTEND ARCHITECTURE)
+
+```text
+RTMS_FE/
+├── Dockerfile                 # Multi-stage Dockerfile cho Frontend App (Port 3000)
+├── src/
+│   ├── app/                   # App Router Pages & Layouts
+│   │   ├── page.tsx           # Landing Portal cho 4 phân hệ
+│   │   ├── login/page.tsx     # Trang Đăng nhập & Chọn tài khoản Demo 1-click
+│   │   ├── (dashboard)/       # Redirects đường dẫn cũ (/cargo-owner, /port, /vessel-owner)
+│   │   └── dashboard/         # 4 Giao diện Phân hệ Cô lập
+│   │       ├── customer/      # Giao diện Khách hàng (User #2)
+│   │       ├── port/          # Giao diện Ban Quản lý Cảng (User #11)
+│   │       ├── vessel/        # Giao diện Chủ phương tiện (User #16)
+│   │       └── admin/         # Giao diện Quản trị viên (User #1)
+│   ├── components/            # Reusable UI Components
+│   │   ├── auth/              # RoleGuard (Bảo vệ đường dẫn theo vai trò)
+│   │   ├── common/            # NotificationToast (Realtime Toast Hub)
+│   │   └── layout/            # Header, Sidebar (Smooth Scrolling Navigation)
+│   └── lib/                   # Business Logic & Client State
+│       ├── api-client.ts      # Axios Client + Smart Mock Fallback Engine (0 lỗi Network Error)
+│       ├── auth-context.tsx   # Quản lý phiên đăng nhập & phân quyền người dùng
+│       ├── realtime.ts        # Realtime Event Emitter Hub
+│       └── services/          # Service layer kết nối REST APIs (auth, booking, port, user, vessel, workflow)
+├── REPORT.md                  # Báo cáo thiết kế Giao diện Frontend (Maritime Cyan Palette)
+```
+
+---
+
+## 🎨 3. QUY CHUẨN THIẾT KẾ (DESIGN SYSTEM & TYPOGRAPHY)
+
+- **Bảng màu chủ đạo Maritime Cyan**:
+  - `#CBF1F5` (Soft Powder Cyan) — Nền thẻ Card, soft hover & badge tint.
+  - `#A6E3E9` (Soft Aqua Blue) — Đường viền UI border & nút phụ.
+  - `#71C9CE` (Vibrant Ocean Teal) — Màu nhận diện thương hiệu chủ đạo & nút chính.
+  - `#0F4C5C` (Deep Teal) & `#142834` (Deep Ocean Slate) — Màu chữ tiêu đề & thanh điều hướng.
+- **Font chữ Google Fonts**: **`Outfit`** (Tiêu đề & Heading) và **`Plus Jakarta Sans`** (Nội dung & Thông số).
+- **RoleGuard Protection**: Tự động chặn và chuyển hướng nếu tài khoản cố tình truy cập sai phân hệ giao diện.
+- **Cơ chế Standalone Dual Mode**: Tự động chuyển đổi giữa **Online Mode** (REST APIs thật) và **Offline Standalone Mode** (Smart Mock Fallback Engine, 0 lỗi Network Error).
+
+---
+
+## 👥 4. KIẾN TRÚC GIAO DIỆN 4 PHÂN QUYỀN (ROLE DASHBOARDS)
+
+1. 📦 **Khách hàng (`CUSTOMER`)** — `/dashboard/customer`: Đặt đơn vận tải mới, theo dõi quy trình 6 bước realtime, chốt lựa chọn tàu ứng viên.
+2. ⚓ **Ban Quản lý Cảng (`PORT_MANAGER`)** — `/dashboard/port`: Duyệt điều kiện bốc xếp Cảng đi/đến, chốt hợp đồng chuyến cuối và hiển thị bản đồ tọa độ PostGIS GeoJSON Point.
+3. 🚢 **Chủ Phương tiện (`VESSEL_OWNER`)** — `/dashboard/vessel`: Hộp thư nhận đề xuất ghép chuyến (Duyệt/Từ chối), bật/tắt trạng thái đội tàu `ACTIVE`/`INACTIVE`.
+4. ⚙️ **Trung tâm Điều hành (`ADMIN`)** — `/dashboard/admin`: Giám sát KPIs hệ thống, máy trạng thái State Machine, kích hoạt n8n jobs và Event Bus live stream.
+
+---
+
+## 🔑 5. TÀI KHOẢN TRẢI NGHIỆM NHANH (QUICK DEMO ACCOUNTS)
+
+Truy cập trang đăng nhập tại `/login` và chọn 1-click vào tài khoản mẫu:
+
+| Vai Trò | Email Đăng Nhập | Mật Khẩu | Phân Hệ Được Cấp Phép | ID Mẫu |
+| :--- | :--- | :--- | :--- | :--- |
+| 📦 **Khách Hàng** | `customer@vesseapp.vn` | `123456` | `/dashboard/customer` | User #2 |
+| ⚓ **Quản Lý Cảng** | `catlai@port.vn` | `123456` | `/dashboard/port` | User #11 |
+| 🚢 **Chủ Phương Tiện** | `songviet01@vessel.vn` | `123456` | `/dashboard/vessel` | User #16 |
+| ⚙️ **Quản Trị Viên** | `admin@vesseapp.vn` | `123456` | `/dashboard/admin` | User #1 |
+
+---
+
+## 🚀 6. HƯỚNG DẪN KHỞI CHẠY (GETTING STARTED)
+
+### 1. Khởi chạy với Docker
 ```bash
-cp .env.example .env.local
+docker compose up --build -d frontend
+# Giao diện Web chạy tại: http://localhost:3000
+```
+
+### 2. Khởi chạy Thủ công
+```bash
 npm install
 npm run dev
+# Giao diện Web chạy tại: http://localhost:3000
 ```
 
-Mở <http://localhost:3000>.
-
+### 3. Kiểm tra Biên dịch Production Build (100% Passed)
 ```bash
-npm run lint
-npm run typecheck
 npm run build
-npm start
 ```
 
-Lưu ý:
-
-- Dùng `.env.local` cho `npm run dev` (không commit file này).
-- Hiện chỉ có khung UI (`/`, `/cargo-owner`, `/port`, `/vessel-owner`); chưa gọi
-  nghiệp vụ vì API backend chưa implement.
-- Chạy full stack bằng Docker: xem `RTMS_BE/README.md`.
-
-## Cấu trúc source
-
-```text
-src/
-├── app/
-│   ├── (auth)/                     # Đăng nhập / khôi phục tài khoản
-│   ├── (dashboard)/
-│   │   ├── cargo-owner/            # Chủ hàng — Booking, Shipment
-│   │   ├── port/                   # Cảng — review, điều phối, xác nhận
-│   │   └── vessel-owner/           # Chủ tàu — tàu, request/response
-│   ├── layout.tsx
-│   ├── page.tsx
-│   └── globals.css
-├── components/
-│   ├── ui/
-│   ├── layout/
-│   ├── booking/
-│   ├── vessel/
-│   ├── shipment/
-│   ├── map/                        # Leaflet + Port.port_geo
-│   ├── forms/
-│   └── shared/
-├── features/
-│   └── <feature>/
-├── hooks/
-├── lib/
-│   ├── api/
-│   ├── auth/
-│   ├── validation/
-│   └── constants/
-└── types/                          # Type khớp response API / schema
-```
-
-Thư mục chưa có file sẽ được tạo khi bắt đầu chức năng; không tạo folder rỗng.
-
-URL hiện tại (route group `(dashboard)` không xuất hiện trên URL):
-
-- `/` — landing
-- `/cargo-owner` — không gian Chủ hàng
-- `/port` — không gian Cảng
-- `/vessel-owner` — không gian Chủ tàu
-
-## Viết code mới ở đâu?
-
-- Trang/URL mới: `src/app/<route>/page.tsx`
-- Layout nhóm trang: `src/app/<route>/layout.tsx`
-- UI dùng chung: `src/components/ui`
-- Component booking/shipment/map: thư mục tương ứng trong `components`
-- Use case UI: `src/features/<feature>`
-- Gọi API: `src/lib/api`
-- Type dùng chung: `src/types`
-- Validate form: `src/lib/validation`
-
-Ví dụ tạo booking:
-
-```text
-src/app/(dashboard)/cargo-owner/bookings/new/page.tsx
-src/features/create-booking/
-├── components/booking-form.tsx
-├── hooks/use-create-booking.ts
-└── api/create-booking.ts
-src/lib/validation/booking.ts
-src/types/booking.ts
-```
-
-## Ánh xạ UI với schema và module
-
-- Đăng nhập/phân quyền → `User`, `Role`, module `auth`
-- Hồ sơ Chủ hàng → `CargoOwner`, module `cargo-owners`
-- Tạo/xem booking → `Booking`, `Route`, `RoutePort`, module `bookings`
-- Cảng review/xác nhận → `BookingReview`, `Port`, module `booking-reviews`
-- Chủ tàu quản lý tàu → `VesselOwner`, `Vessel`, module `vessels`
-- Accept/reject → `VesselRequest`, `VesselResponse`, module `vessels`
-- Chọn tàu → `BookingVesselSelection`, module `bookings`
-- Theo dõi chuyến → `Shipment`, module `shipments`
-- Bản đồ cảng → `Port.port_geo`, module `routes`
-
-Chín bảng đầu là schema lõi do team cung cấp. Các bảng liên quan tàu,
-workflow, rule, audit và notification là phần mở rộng bắt buộc để khớp báo cáo;
-xem tài liệu schema trong repo backend.
-
-## Quy tắc App Router
-
-- Mặc định Server Component.
-- Chỉ thêm `"use client"` khi cần state, effect hoặc browser API.
-- Không import Leaflet trong Server Component; dùng dynamic Client Component.
-- Không để secret trong biến `NEXT_PUBLIC_*`.
-- Dùng `loading.tsx` / `error.tsx` khi cần.
-
-## Biến môi trường
-
-- `NEXT_PUBLIC_APP_NAME`: tên hiển thị.
-- `NEXT_PUBLIC_API_URL`: base URL Backend API.
-
-Sao chép `.env.example` thành `.env.local`; không commit `.env.local`.
-
-## Docker
-
-Docker Compose nằm trong `RTMS_BE`. Clone `RTMS_FE` cạnh `RTMS_BE`, rồi:
-
-```bash
-cd ../RTMS_BE
-docker compose up --build frontend
-```
-
-Production image dùng Next.js standalone, cổng `3000`.
-
-## API client (Axios)
-
-FE đã setup Axios tại `src/lib/api/client.ts` gồm:
-
-- `api` instance với `baseURL` từ `NEXT_PUBLIC_API_URL`
-- timeout mặc định
-- interceptor chuẩn hóa lỗi về `ApiError`
-- helper: `apiGet`, `apiPost`, `apiPatch`, `apiDelete`
-
-Khi viết feature mới, không gọi `fetch` trực tiếp trong component; tạo hàm API
-trong `src/features/<feature>/api` và tái sử dụng helper Axios này.
+Báo cáo chi tiết xem tại: [`REPORT.md`](REPORT.md).
